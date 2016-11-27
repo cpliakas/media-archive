@@ -6,29 +6,49 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"sync"
+	"strings"
 	"syscall"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
-func main() {
+// RootCmd handles the root "media-archive" command.
+var RootCmd = &cobra.Command{
+	Use:   "media-archive",
+	Short: "A tool that archives personal media files",
+	Long:  `A tool that archives personal media files to various storage backends, e.g. AWS S3.`,
+	Run:   RunRootCmd,
+}
 
+// RunRootCmd is the work function for RootCmd.
+func RunRootCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	EventListener(cancel)
 
-	root := "/Users/chris.pliakas/media-archive"
+	root := viper.GetString("root-dir")
 
 	out1, _ := DirectoryWatcher(ctx, root)
 	out2, _ := DirectoryScanner(ctx, root)
+	ArchiveMedia(out1, out2)
 
-	go func() {
-		out := merge(out1, out2)
-		for n := range out {
-			fmt.Println(n)
-		}
-	}()
-
-	// Wait for the cancel function to be called.
 	<-ctx.Done()
+}
+
+func main() {
+
+	viper.SetEnvPrefix("MEDIA_ARCHIVE")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.AutomaticEnv()
+
+	AddSubcommands(RootCmd)
+	InitGlobalConfig(RootCmd)
+	InitRootCmdConfig(RootCmd)
+
+	if err := RootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(-1)
+	}
 }
 
 // EventListener listens for shutdown signals and calls the context's cancel
@@ -45,32 +65,23 @@ func EventListener(cancel context.CancelFunc) {
 	}()
 }
 
-// merge implements the fan-in pattern
-// https://blog.golang.org/pipelines
-func merge(cs ...<-chan string) <-chan string {
-	var wg sync.WaitGroup
-	out := make(chan string)
+// AddSubcommands adds subcommands (usually) to the root command.
+func AddSubcommands(cmd *cobra.Command) {
+	//	cmd.AddCommand(SomeSubCmd)
+}
 
-	// Start an output goroutine for each input channel in cs. output copies
-	// values from c to out until c is closed, then calls wg.Done.
-	output := func(c <-chan string) {
-		for n := range c {
-			out <- n
-		}
-		wg.Done()
-	}
+// InitGlobalConfig adds global configuration options.
+func InitGlobalConfig(cmd *cobra.Command) {
 
-	wg.Add(len(cs))
-	for _, c := range cs {
-		go output(c)
-	}
+	cmd.PersistentFlags().BoolP("debug", "d", false, "Show debug level log messages.")
+	viper.BindPFlag("debug", cmd.PersistentFlags().Lookup("debug"))
+	viper.SetDefault("debug", false)
+}
 
-	// Start a goroutine to close out once all the output goroutines are
-	// done. This must start after the wg.Add call.
-	go func() {
-		wg.Wait()
-		close(out)
-	}()
+// InitRootCmdConfig adds configuration options specific to RootCmd.
+func InitRootCmdConfig(cmd *cobra.Command) {
 
-	return out
+	cmd.Flags().StringP("root-dir", "D", ".", "The root directory that media files are contained under.")
+	viper.BindPFlag("root-dir", cmd.Flags().Lookup("root-dir"))
+	viper.SetDefault("root-dir", ".")
 }

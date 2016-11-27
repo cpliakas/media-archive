@@ -7,3 +7,5 @@ import:
 - package: golang.org/x/sys
   subpackages:
   - unix
+- package: github.com/spf13/cobra
+- package: github.com/spf13/viper

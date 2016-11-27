@@ -11,8 +11,8 @@ import (
 // A Discoverer finds media files and sends them to the returned channel.
 type Discoverer func(ctx context.Context, root string) (<-chan string, <-chan error)
 
-// DirectoryWatcher is a Discoverer that watches root for file additiona and
-// modifications, sending the files and errors to the returned channels.
+// DirectoryWatcher is a Discoverer that watches root for file modifications
+// and sends the media files and errors to the returned channels.
 //
 // See http://stackoverflow.com/a/6612243 for filepath.Walk() technique.
 func DirectoryWatcher(ctx context.Context, root string) (<-chan string, <-chan error) {
@@ -32,11 +32,6 @@ func DirectoryWatcher(ctx context.Context, root string) (<-chan string, <-chan e
 			for {
 				select {
 				case event := <-watcher.Events:
-					// TODO Filter out non-media files
-					//log.Println("event:", event.Name, event.Op)
-					//if event.Op&fsnotify.Write == fsnotify.Write {
-					//	log.Println("modified file:", event.Name)
-					//}
 					out <- event.Name
 				case err := <-watcher.Errors:
 					errs <- err
@@ -69,6 +64,8 @@ func DirectoryScanner(ctx context.Context, root string) (<-chan string, <-chan e
 		if err != nil {
 			errs <- err
 		}
+
+		<-ctx.Done()
 	}()
 
 	return out, errs
@@ -77,7 +74,14 @@ func DirectoryScanner(ctx context.Context, root string) (<-chan string, <-chan e
 // walkFunc sends media files to the out channel and no-ops the rest.
 func walkFunc(ctx context.Context, out chan string) filepath.WalkFunc {
 	return func(path string, info os.FileInfo, err error) error {
+
+		// Only files, please.
+		if info.IsDir() {
+			return nil
+		}
+
 		// TODO Filter out non-media files
+
 		out <- path
 		return nil
 	}
