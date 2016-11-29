@@ -33,6 +33,7 @@ func RunRootCmd(cmd *cobra.Command, args []string) {
 	out1, err1 := DirectoryWatcher(ctx, root)
 	out2, err2 := DirectoryScanner(ctx, root)
 	err3 := ArchiveMedia(out1, out2)
+
 	HandleErrors(err1, err2, err3)
 
 	<-ctx.Done()

@@ -33,10 +33,25 @@ func DirectoryWatcher(ctx context.Context, root string) (<-chan string, <-chan e
 				select {
 				case event := <-watcher.Events:
 
+					// TODO handle errors
+					isdir, _ := isDir(event.Name)
+
 					// Act on fsnotify.Create, fsnotify.Write
 					switch event.Op {
 					case fsnotify.Create, fsnotify.Write:
-						out <- event.Name
+						// Add the file to the out channel, otherwise ass the
+						// directory to the watcher.
+						if !isdir {
+							out <- event.Name
+						} else {
+							watcher.Add(event.Name)
+						}
+
+					case fsnotify.Remove:
+						// Remove watcher when directories are deleted.
+						if isdir {
+							watcher.Remove(event.Name)
+						}
 					}
 
 					// No-op fsnotify.Remove, fsnotify.Rename, fsnotify.Chmod
@@ -45,6 +60,7 @@ func DirectoryWatcher(ctx context.Context, root string) (<-chan string, <-chan e
 				case err := <-watcher.Errors:
 					errs <- err
 				}
+
 			}
 		}()
 

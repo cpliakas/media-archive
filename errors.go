@@ -10,7 +10,7 @@ func HandleErrors(in ...<-chan error) {
 	go func() {
 		out := mergeErrors(in...)
 		for err := range out {
-			log.Println(err)
+			log.Println("ERROR", err)
 		}
 	}()
 }

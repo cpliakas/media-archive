@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"strings"
 	"sync"
 
@@ -69,11 +70,26 @@ func ArchiveMedia(in ...<-chan string) <-chan error {
 			// TODO write to cache
 
 			// TODO Figure out a logging strategy.
-			log.Println("uploaded file:", path)
+			log.Printf("file uploaded [filepath=%s]", path)
 		}
 	}()
 
 	return errs
+}
+
+// isDir returns true if the path is a directory.
+func isDir(path string) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+
+	stat, err := file.Stat()
+	if err != nil {
+		return false, err
+	}
+
+	return stat.IsDir(), nil
 }
 
 // merge implements the fan-in pattern and merges the channels passed to it
