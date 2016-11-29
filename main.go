@@ -30,9 +30,10 @@ func RunRootCmd(cmd *cobra.Command, args []string) {
 
 	root := viper.GetString("root-dir")
 
-	out1, _ := DirectoryWatcher(ctx, root)
-	out2, _ := DirectoryScanner(ctx, root)
-	ArchiveMedia(out1, out2)
+	out1, err1 := DirectoryWatcher(ctx, root)
+	out2, err2 := DirectoryScanner(ctx, root)
+	err3 := ArchiveMedia(out1, out2)
+	HandleErrors(err1, err2, err3)
 
 	<-ctx.Done()
 }
@@ -105,6 +106,10 @@ func InitGlobalConfig(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolP("debug", "d", false, "Show debug level log messages.")
 	viper.BindPFlag("debug", cmd.PersistentFlags().Lookup("debug"))
 	viper.SetDefault("debug", false)
+
+	cmd.Flags().StringP("archive-name", "n", "media-archive", "The name of the archive, e.g. my-photos.")
+	viper.BindPFlag("archive-name", cmd.Flags().Lookup("archive-name"))
+	viper.SetDefault("archive-name", "media-archive")
 }
 
 // InitRootCmdConfig adds configuration options specific to RootCmd.

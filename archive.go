@@ -1,27 +1,79 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
+	"log"
+	"strings"
 	"sync"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/spf13/viper"
 )
 
 // ArchiveMedia reads the files send through all of the in channels and
 // sends them to the configured backends.
-func ArchiveMedia(in ...<-chan string) {
+//
+// TODO Implement storage adapters.
+func ArchiveMedia(in ...<-chan string) <-chan error {
+	errs := make(chan error)
+
 	go func() {
+
+		sess, err := session.NewSession()
+		if err != nil {
+			errs <- err
+			return
+		}
+
+		svc := s3.New(sess)
+
+		// TODO Use dependency injection.
+		dir := viper.GetString("root-dir")
+		bucket := viper.GetString("aws-bucket")
+		archive := viper.GetString("archive-name")
+
+		// Makes the path to the file relative.
+		normalizePath := func(p string) string {
+			d := strings.TrimRight(dir, "/")
+			return strings.TrimLeft(strings.TrimPrefix(p, d), "/")
+		}
+
 		out := merge(in...)
 		for path := range out {
 
+			// TODO check the cache
+
 			dat, err := ioutil.ReadFile(path)
 			if err != nil {
-				panic(err) // TODO Don't panic.
+				errs <- err
+				continue
 			}
 
-			// TODO This is where we send the data to S3.
-			fmt.Println(hash(dat), path)
+			params := &s3.PutObjectInput{
+				Bucket:       aws.String(bucket),
+				Key:          aws.String(fmt.Sprintf("%s/%s", archive, normalizePath(path))),
+				Body:         bytes.NewReader(dat),
+				StorageClass: aws.String(s3.TransitionStorageClassStandardIa),
+			}
+
+			_, err = svc.PutObject(params)
+			if err != nil {
+				errs <- err
+				continue
+			}
+
+			// TODO write to cache
+
+			// TODO Figure out a logging strategy.
+			log.Println("uploaded file:", path)
 		}
 	}()
+
+	return errs
 }
 
 // merge implements the fan-in pattern and merges the channels passed to it

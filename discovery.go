@@ -32,7 +32,16 @@ func DirectoryWatcher(ctx context.Context, root string) (<-chan string, <-chan e
 			for {
 				select {
 				case event := <-watcher.Events:
-					out <- event.Name
+
+					// Act on fsnotify.Create, fsnotify.Write
+					switch event.Op {
+					case fsnotify.Create, fsnotify.Write:
+						out <- event.Name
+					}
+
+					// No-op fsnotify.Remove, fsnotify.Rename, fsnotify.Chmod
+					// TODO How do we handle fsnotify.Rename?
+
 				case err := <-watcher.Errors:
 					errs <- err
 				}
