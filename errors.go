@@ -5,29 +5,30 @@ import (
 	"sync"
 )
 
-// Handle errors logs any errors.
+// HandleErrors logs all errors sent through the passed channels.
+// TODO COme up with a better logging strategy.
 func HandleErrors(in ...<-chan error) {
 	go func() {
-		out := mergeErrors(in...)
+		out := merge(in...)
 		for err := range out {
 			log.Println("ERROR", err)
 		}
 	}()
 }
 
-// mergeErrors implements the fan-in pattern and merges the error channels
-// passed to it into a single channel that can be processed.
+// merge implements the fan-in pattern and merges the passed error channels
+// into a single channel that can be processed.
 //
 // https://blog.golang.org/pipelines
-func mergeErrors(cs ...<-chan error) <-chan error {
+func merge(cs ...<-chan error) <-chan error {
 	var wg sync.WaitGroup
 	out := make(chan error)
 
 	// Start an output goroutine for each input channel in cs. output copies
 	// values from c to out until c is closed, then calls wg.Done.
 	output := func(c <-chan error) {
-		for error := range c {
-			out <- error
+		for err := range c {
+			out <- err
 		}
 		wg.Done()
 	}

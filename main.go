@@ -9,8 +9,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -28,42 +26,51 @@ func RunRootCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	EventListener(cancel)
 
+	archive := viper.GetString("archive-name")
+	bucket := viper.GetString("aws-bucket")
 	root := viper.GetString("root-dir")
 
-	out1, err1 := DirectoryWatcher(ctx, root)
-	out2, err2 := DirectoryScanner(ctx, root)
-	err3 := ArchiveMedia(out1, out2)
-
-	HandleErrors(err1, err2, err3)
-
-	<-ctx.Done()
-}
-
-var ListBucketsCmd = &cobra.Command{
-	Use:   "list-buckets",
-	Short: "List S3 buckets",
-	Long:  `List S3 buckets.`,
-	Run:   RunListBucketsCmd,
-}
-
-func RunListBucketsCmd(cmd *cobra.Command, args []string) {
-	sess, err := session.NewSession()
+	watcher, err := NewMediaWatcher(root)
 	if err != nil {
 		panic(err)
 	}
 
-	svc := s3.New(sess)
+	err2 := ArchiveMedia(watcher, archive, bucket)
+	HandleErrors(watcher.Errors(), err2)
 
-	params := &s3.ListBucketsInput{}
+	<-ctx.Done()
+}
 
-	resp, err := svc.ListBuckets(params)
+var TestCmd = &cobra.Command{
+	Use:   "test",
+	Short: "For testing shit",
+	Long:  `For testing shit.`,
+	Run:   RunTestCmd,
+}
+
+func RunTestCmd(cmd *cobra.Command, args []string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	EventListener(cancel)
+
+	root := viper.GetString("root-dir")
+	w, err := NewMediaWatcher(root)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
+	defer w.Close()
 
-	for _, bucket := range resp.Buckets {
-		fmt.Println(*bucket.Name)
-	}
+	go func() {
+		for {
+			select {
+			case path := <-w.Media():
+				log.Println("INFO discovered file:", w.RelativePath(path))
+			case err := <-w.Errors():
+				log.Println("ERROR", err)
+			}
+		}
+	}()
+
+	<-ctx.Done()
 }
 
 func main() {
@@ -75,6 +82,7 @@ func main() {
 	AddSubcommands(RootCmd)
 	InitGlobalConfig(RootCmd)
 	InitRootCmdConfig(RootCmd)
+	InitTestCmdConfig(TestCmd)
 
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -98,7 +106,7 @@ func EventListener(cancel context.CancelFunc) {
 
 // AddSubcommands adds subcommands (usually) to the root command.
 func AddSubcommands(cmd *cobra.Command) {
-	cmd.AddCommand(ListBucketsCmd)
+	cmd.AddCommand(TestCmd)
 }
 
 // InitGlobalConfig adds global configuration options.
@@ -123,4 +131,12 @@ func InitRootCmdConfig(cmd *cobra.Command) {
 	cmd.Flags().StringP("aws-bucket", "b", "", "The AWS S3 bucket that media files are archived to.")
 	viper.BindPFlag("aws-bucket", cmd.Flags().Lookup("aws-bucket"))
 	viper.SetDefault("aws-bucket", "")
+}
+
+// InitTestCmdConfig adds configuration options specific to TestCmd.
+func InitTestCmdConfig(cmd *cobra.Command) {
+
+	cmd.Flags().StringP("root-dir", "D", ".", "The root directory that media files are contained under.")
+	viper.BindPFlag("root-dir", cmd.Flags().Lookup("root-dir"))
+	viper.SetDefault("root-dir", ".")
 }
