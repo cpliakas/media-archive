@@ -52,24 +52,28 @@ func RunTestCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	EventListener(cancel)
 
-	root := viper.GetString("root-dir")
-	w, err := NewMediaWatcher(root)
+	cache, err := NewSQLiteCache("media-archive")
 	if err != nil {
 		panic(err)
 	}
-	defer w.Close()
 
-	go func() {
-		for {
-			select {
-			case path := <-w.Media():
-				log.Println("INFO discovered file:", w.RelativePath(path))
-			case err := <-w.Errors():
-				log.Println("ERROR", err)
-			}
-		}
-	}()
+	filename := "path/to/a/file"
+	err = cache.Purge(filename)
+	if err != nil {
+		panic(err)
+	}
 
+	err = cache.Set(CacheItem{filename})
+	if err != nil {
+		panic(err)
+	}
+
+	item, err := cache.Get(filename)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(item)
 	<-ctx.Done()
 }
 
